@@ -42,6 +42,7 @@ export type TungaConfig = {
     ignorePunctuationOnly: boolean;
     ignoreCodeLike: boolean;
     ignoreShortLowercase: boolean;
+    ignoreCssValues: boolean;
   };
 };
 

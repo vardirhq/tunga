@@ -1,2 +1,4 @@
-import { expect,it } from "vitest"; import { generateKey, slugify } from "../src/core/keygen.js";
+import { expect,it } from "vitest"; import { generateKey, slugify, uniqueKey } from "../src/core/keygen.js";
 it("generates predictable keys",()=>{ expect(slugify("Save changes")).toBe("save_changes"); expect(generateKey("Search",{file:"src/components/Header.tsx",namespace:"ui",strategy:"path"})).toBe("ui.header.search"); });
+it("truncates long slugs at a word boundary",()=>{ const slug=slugify("Timestamps in this view are shown zero padded for alignment"); expect(slug.length).toBeLessThanOrEqual(48); expect(slug).toBe("timestamps_in_this_view_are_shown_zero_padded"); expect(slugify("x".repeat(60)).length).toBe(48); });
+it("reuses an existing suffixed key holding the same value",()=>{ const locale={ui:{details:{folder:"[folder]",folder_2:"Folder"}}}; expect(uniqueKey("ui.details.folder","[folder]",locale)).toBe("ui.details.folder"); expect(uniqueKey("ui.details.folder","Folder",locale)).toBe("ui.details.folder_2"); expect(uniqueKey("ui.details.folder","Folders",locale)).toBe("ui.details.folder_3"); });

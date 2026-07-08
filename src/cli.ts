@@ -29,6 +29,7 @@ program
   .option("--overwrite", "Overwrite existing locale values")
   .option("--namespace <name>", "Translation namespace")
   .option("--key-strategy <strategy>", "Key strategy: path, text, or component")
+  .option("--include-low-confidence", "Also extract low-confidence candidates")
   .action(extractCommand);
 
 program

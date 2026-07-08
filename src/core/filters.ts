@@ -20,10 +20,56 @@ export function shouldIgnoreString(raw: string, config: TungaConfig, context?: {
   if (events.has(value)) return "event name";
   if (/^[a-z][a-z0-9-]+(\.[a-z][a-z0-9-]+)+$/.test(value)) return "dotted key";
   if (config.filters.ignoreCodeLike && /(=>|\bwindow\.|==|\);|\bfunction\s*\(|\w+\([^)]*\)\s*[{;]?)/.test(value)) return "code-like string";
+  if (config.filters.ignoreCssValues && looksLikeCssValue(value)) return "css value";
+  if (config.filters.ignoreCssValues && looksLikeSvgPath(value)) return "svg path";
   if (config.filters.ignoreClassNames && looksLikeClassName(value)) return "class name";
   if (config.filters.ignoreShortLowercase && !context?.strongUi && /^[a-z][a-z\s-]*$/.test(value) && value.split(/\s+/).length <= 2) return "ambiguous short lowercase";
 
   return undefined;
+}
+
+const cssKeywords = new Set([
+  "solid", "dashed", "dotted", "double", "groove", "ridge", "inset", "outset",
+  "none", "auto", "inherit", "initial", "unset", "revert", "transparent", "currentcolor",
+  "bold", "bolder", "lighter", "normal", "italic", "oblique",
+  "cover", "contain", "repeat", "no-repeat", "repeat-x", "repeat-y",
+  "nowrap", "wrap", "hidden", "visible", "scroll", "pointer",
+  "ease", "ease-in", "ease-out", "ease-in-out", "linear", "infinite", "forwards", "backwards", "alternate",
+  "border-box", "content-box", "antialiased", "sans-serif", "serif", "monospace",
+]);
+const cssUnits = "px|rem|em|ex|ch|vh|vw|vmin|vmax|fr|deg|rad|turn|s|ms|%";
+const cssFunctions = /^(rgba?|hsla?|var|calc|url|linear-gradient|radial-gradient|conic-gradient|cubic-bezier|steps|translate[xyz]?|translate3d|rotate[xyz]?|scale[xyz]?|skew[xy]?|matrix|minmax|repeat|clamp|min|max|env)\(/;
+
+// A string is a CSS value when every whitespace/comma/slash-separated token is a
+// CSS token (number, number+unit, color, function, keyword, or an interpolation
+// placeholder) and at least one token is unambiguously CSS (unit, color, or
+// function — keywords alone, like "Visible", can be legitimate UI text).
+function looksLikeCssValue(raw: string) {
+  const tokens = raw.trim().split(/[\s,/]+/).filter(Boolean);
+  if (tokens.length === 0) return false;
+  let signal = false;
+  for (const token of tokens) {
+    const part = token.toLowerCase().replace(/\{\{\w+\}\}/g, "");
+    if (part === "") continue;
+    if (new RegExp(`^-?(\\d+\\.?\\d*|\\.\\d+)(${cssUnits})$`).test(part) || new RegExp(`^(${cssUnits})$`).test(part)) {
+      signal = true;
+      continue;
+    }
+    if (/^#[0-9a-f]{3,8}$/.test(part) || cssFunctions.test(part)) {
+      signal = true;
+      continue;
+    }
+    if (/^-?(\d+\.?\d*|\.\d+)$/.test(part) || cssKeywords.has(part)) continue;
+    return false;
+  }
+  return signal;
+}
+
+// SVG path data: path commands, digits, and separators only, digit-heavy, with no
+// letter runs a natural-language word would produce.
+function looksLikeSvgPath(raw: string) {
+  const value = raw.trim();
+  return value.length >= 8 && /^[MmZzLlHhVvCcSsQqTtAa][\s\d.,+\-eEMmZzLlHhVvCcSsQqTtAa]*$/.test(value) && /\d/.test(value) && !/[a-z]{3}/i.test(value);
 }
 
 function looksLikeClassName(value: string) {

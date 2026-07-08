@@ -230,6 +230,10 @@ Then write the locale file:
 tunga extract
 ```
 
+Low-confidence candidates are skipped by both `extract` and `apply`, so the locale file
+and the rewritten source always agree. Pass `--include-low-confidence` to either command
+to include them.
+
 ### 3. Apply codemods
 
 ```bash
@@ -414,6 +418,8 @@ Tunga tries to avoid strings that are usually not user-facing copy, including:
 - short lowercase strings with one or two words unless the surrounding context strongly suggests UI copy
 - Tailwind-style class strings
 - CSS-like utility classes
+- CSS values such as `1px solid ${theme.border}` or `0 2px 8px rgba(0,0,0,0.2)`
+- SVG path data
 - URLs and email addresses
 - API endpoints
 - HTTP methods

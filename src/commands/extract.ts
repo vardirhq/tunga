@@ -10,6 +10,7 @@ export async function extractCommand(opts: {
   overwrite?: boolean;
   namespace?: string;
   keyStrategy?: "path" | "text" | "component";
+  includeLowConfidence?: boolean;
 }) {
   startTui(opts.dryRun ? "Tunga extract preview" : "Tunga extract");
 
@@ -21,7 +22,9 @@ export async function extractCommand(opts: {
   };
   const localePath = path.resolve(opts.out ?? config.locale);
   const scanSpinner = createSpinner("Finding localizable strings");
-  const candidates = await scanProject(config);
+  const scanned = await scanProject(config);
+  // Same selection as apply, so extract never writes keys apply will not use.
+  const candidates = scanned.filter((candidate) => candidate.confidence !== "low" || opts.includeLowConfidence);
   scanSpinner.stop(`Found ${candidates.length} candidate string${candidates.length === 1 ? "" : "s"}`);
 
   const locale = loadLocale(localePath);

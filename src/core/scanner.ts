@@ -110,7 +110,7 @@ export function scanSource(source: string, { file, config }: { file: string; con
     StringLiteral(nodePath: NodePath<t.StringLiteral>) {
       if (!config.scan.stringLiterals || isExistingLocalization(nodePath, config)) return;
       if (nodePath.parentPath.isImportDeclaration() || nodePath.parentPath.isExportNamedDeclaration()) return;
-      if (nodePath.findParent((parent) => parent.isJSXAttribute())) return;
+      if (isJsxAttributeValue(nodePath)) return;
       const prop = nodePath.parentPath.isObjectProperty() ? nodePath.parentPath.node : undefined;
       const key = prop ? objectPropertyKeyName(prop) : undefined;
       if (key && isTechnicalObjectPropertyKey(key)) return;
@@ -128,7 +128,15 @@ export function scanSource(source: string, { file, config }: { file: string; con
   return candidates;
 }
 
-function isExistingLocalization(nodePath: NodePath, config: TungaConfig) {
+// Only strings in direct attribute value position (`attr="..."` or `attr={"..."}`)
+// belong to the JSXAttribute visitor; strings inside handler bodies, arrays, or
+// objects passed as props are regular string literals.
+export function isJsxAttributeValue(nodePath: NodePath) {
+  if (nodePath.parentPath?.isJSXAttribute()) return true;
+  return Boolean(nodePath.parentPath?.isJSXExpressionContainer() && nodePath.parentPath.parentPath?.isJSXAttribute());
+}
+
+export function isExistingLocalization(nodePath: NodePath, config: TungaConfig) {
   const callExpression = nodePath.findParent((parent) => parent.isCallExpression()) as NodePath<t.CallExpression> | null;
   if (!callExpression) return false;
 

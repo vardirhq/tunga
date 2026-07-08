@@ -51,6 +51,39 @@ it("rewrites template literals with interpolation variables", () => {
   expect(result.code).toContain('name: user.name');
 });
 
+it("preserves edge whitespace when replacing JSX text next to an expression", () => {
+  const result = applyCodemod({
+    source: "const el=<p>{ollamaName} is running</p>;",
+    config: defaultConfig,
+    skipImport: true,
+    candidates: [{ text: "is running", keySuggestion: "ui.status.is_running", confidence: "high" }],
+  });
+
+  expect(result.code).toContain(`{ollamaName}{" "}{t("ui.status.is_running")}`);
+});
+
+it("keeps whitespace on both sides of JSX text between expressions", () => {
+  const result = applyCodemod({
+    source: "const el=<p>{used} used of {total}</p>;",
+    config: defaultConfig,
+    skipImport: true,
+    candidates: [{ text: "used of", keySuggestion: "ui.storage.used_of", confidence: "high" }],
+  });
+
+  expect(result.code).toContain(`{used}{" "}{t("ui.storage.used_of")}{" "}{total}`);
+});
+
+it("rewrites strings inside inline handlers without touching localization calls", () => {
+  const result = applyCodemod({
+    source: `const el=<button onClick={() => showToast("Copied", t("ui.existing"))}>Go</button>;`,
+    config: defaultConfig,
+    skipImport: true,
+    candidates: [{ text: "Copied", keySuggestion: "ui.copied", confidence: "medium" }],
+  });
+
+  expect(result.code).toContain(`showToast(t("ui.copied"), t("ui.existing"))`);
+});
+
 it("rewrites mixed JSX children as one translation", () => {
   const result = applyCodemod({
     source: "const el=<p>Hello {user.name}, you have {count} messages</p>;",
