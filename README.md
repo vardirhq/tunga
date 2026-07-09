@@ -206,15 +206,22 @@ src/components/Header.tsx:15  JSX attribute  "Search products"
 src/pages/Settings.tsx:8      JSX text       "Account settings"
 ```
 
-To review candidates one by one, run:
+To review candidates, run:
 
 ```bash
 tunga scan --interactive
 ```
 
-Accept, edit the key, or reject each candidate. Decisions are persisted to a review
-manifest (`.tunga/review.json` by default, configurable via `manifest`), keyed by the
-candidate's content rather than its position so they survive unrelated edits.
+This opens a scrollable checklist grouped by confidence (high and medium are
+preselected, low is not). `Space` toggles a candidate in or out — toggling a group
+header flips the whole confidence bucket — and `Enter` opens the next-step menu:
+save the review, save and extract, preview the apply, or run the full pipeline.
+
+For one-at-a-time review with key editing, use `tunga scan --step`.
+
+Either way, decisions are persisted to a review manifest (`.tunga/review.json` by
+default, configurable via `manifest`), keyed by the candidate's content rather than
+its position so they survive unrelated edits.
 `extract`, `apply`, and `check` all consume the manifest: rejected strings are never
 extracted or rewritten, and accepted strings are included even at low confidence,
 using the key you chose. Re-running `scan --interactive` only prompts for candidates

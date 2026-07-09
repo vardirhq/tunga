@@ -1,4 +1,5 @@
-import { cancel, intro, outro, spinner, note, log, select, text, isCancel } from "@clack/prompts";
+import { cancel, groupMultiselect, intro, outro, spinner, note, log, select, text, isCancel } from "@clack/prompts";
+import type { ChecklistGroups } from "../interactive/checklist.js";
 import type { CandidateString } from "../types/index.js";
 
 export type CandidateDecision =
@@ -62,6 +63,47 @@ export function renderCandidateTable(candidates: CandidateString[]) {
 
 export function renderDryRunList(title: string, rows: string[]) {
   return [title, ...rows.map((row) => `  ${row}`)].join("\n");
+}
+
+export type NextStep = "save" | "extract" | "dry-run" | "apply";
+
+// Full-list review: scroll with arrows, Space toggles a candidate (or a whole
+// confidence group), Enter confirms. Returns null when the user cancels.
+export async function reviewChecklist(groups: ChecklistGroups, initialValues: string[]): Promise<string[] | null> {
+  const selected = await groupMultiselect({
+    message: "Select the strings to localize (Space toggles, Enter confirms)",
+    options: groups,
+    initialValues,
+    required: false,
+    maxItems: Math.max(8, (process.stdout.rows ?? 24) - 8),
+    groupSpacing: 1,
+  });
+
+  if (isCancel(selected)) {
+    cancel("Review cancelled. No decisions were saved.");
+    return null;
+  }
+
+  return selected as string[];
+}
+
+export async function nextStepMenu(summary: string): Promise<NextStep | null> {
+  const action = await select({
+    message: `${summary} — what next?`,
+    options: [
+      { value: "save", label: "Save review", hint: "Write the manifest and stop" },
+      { value: "extract", label: "Save and extract", hint: "Write the manifest and update the locale file" },
+      { value: "dry-run", label: "Save, extract, and preview apply", hint: "Show the rewrites without changing files" },
+      { value: "apply", label: "Save, extract, and apply", hint: "Rewrite source files" },
+    ],
+  });
+
+  if (isCancel(action)) {
+    cancel("Review cancelled. No decisions were saved.");
+    return null;
+  }
+
+  return action as NextStep;
 }
 
 export async function reviewCandidate(candidate: CandidateString): Promise<CandidateDecision> {
