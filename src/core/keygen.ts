@@ -1,6 +1,7 @@
 import path from "node:path"; import type { KeyStrategy } from "../types/index.js";
-export function slugify(text:string){ return text.trim().replace(/([a-z0-9])([A-Z])/g,"$1_$2").toLowerCase().replace(/['"]/g,"").replace(/[^a-z0-9]+/g,"_").replace(/^_+|_+$/g,"").slice(0,48) || "text"; }
+export function slugify(text:string){ const slug=text.trim().replace(/([a-z0-9])([A-Z])/g,"$1_$2").toLowerCase().replace(/['"]/g,"").replace(/[^a-z0-9]+/g,"_").replace(/^_+|_+$/g,""); return truncateAtWord(slug,48) || "text"; }
+function truncateAtWord(slug:string,max:number){ if(slug.length<=max) return slug; if(slug[max]==="_") return slug.slice(0,max); const cut=slug.slice(0,max); const boundary=cut.lastIndexOf("_"); return boundary>0? cut.slice(0,boundary): cut; }
 export function pathSegment(file:string){ const base=path.basename(file,path.extname(file)); return slugify(base.replace(/\.(test|spec)$/,"")); }
 export function generateKey(text:string, opts:{file:string; namespace:string; strategy:KeyStrategy; componentName?:string}){ const leaf=slugify(text); if(opts.strategy==="text") return `${opts.namespace}.${leaf}`; const scope=opts.strategy==="component" && opts.componentName ? slugify(opts.componentName) : pathSegment(opts.file); return `${opts.namespace}.${scope}.${leaf}`; }
-export function uniqueKey(key:string, value:string, existing:Record<string,unknown>){ const cur=getNested(existing,key); if(cur===undefined || cur===value) return key; let i=2; while(getNested(existing,`${key}_${i}`)!==undefined) i++; return `${key}_${i}`; }
+export function uniqueKey(key:string, value:string, existing:Record<string,unknown>){ const cur=getNested(existing,key); if(cur===undefined || cur===value) return key; for(let i=2;;i++){ const candidate=`${key}_${i}`; const held=getNested(existing,candidate); if(held===undefined || held===value) return candidate; } }
 export function getNested(obj:any,key:string){ return key.split('.').reduce((a,p)=>a?.[p],obj); }

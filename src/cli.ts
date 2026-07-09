@@ -19,7 +19,8 @@ program
   .argument("[path]")
   .option("--json", "Print machine-readable JSON")
   .option("--include <glob>", "Override configured include glob")
-  .option("-i, --interactive", "Review candidate strings in an interactive TUI")
+  .option("-i, --interactive", "Review candidates in a scrollable checklist grouped by confidence")
+  .option("--step", "Review candidates one at a time (allows editing keys)")
   .action(scanCommand);
 
 program
@@ -29,6 +30,7 @@ program
   .option("--overwrite", "Overwrite existing locale values")
   .option("--namespace <name>", "Translation namespace")
   .option("--key-strategy <strategy>", "Key strategy: path, text, or component")
+  .option("--include-low-confidence", "Also extract low-confidence candidates")
   .action(extractCommand);
 
 program

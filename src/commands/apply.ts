@@ -1,7 +1,9 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { loadConfig } from "../core/config.js";
+import { loadManifest, selectCandidates } from "../core/manifest.js";
 import { scanProject } from "../core/scanner.js";
+import { addCandidates, loadLocale } from "../core/localeFile.js";
 import { applyCodemod } from "../core/codemod.js";
 import { formatCode } from "../core/formatter.js";
 import { createSpinner, endTui, renderDryRunList, showNote, startTui, success } from "../output/tui.js";
@@ -25,8 +27,13 @@ export async function applyCommand(opts: {
   };
 
   const scanSpinner = createSpinner("Finding replacement candidates");
-  const candidates = await scanProject(config);
+  const scanned = await scanProject(config);
+  const candidates = selectCandidates(scanned, loadManifest(path.resolve(config.manifest)), opts.includeLowConfidence);
   scanSpinner.stop(`Found ${candidates.length} candidate string${candidates.length === 1 ? "" : "s"}`);
+
+  // Resolve keys against the locale file so apply uses the same collision-suffixed
+  // keys extract wrote (or would write); the locale itself is not written here.
+  addCandidates(loadLocale(path.resolve(config.locale)), candidates);
 
   const byFile = new Map<string, typeof candidates>();
   for (const candidate of candidates) {

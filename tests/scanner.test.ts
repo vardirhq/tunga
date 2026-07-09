@@ -57,6 +57,79 @@ const title="Dashboard"; const route="/settings"; const label=\`Settings\`; t("u
     expect(candidates[1]?.interpolations).toEqual([{ name: "name", expression: "user.name" }]);
   });
 
+  it("sees strings inside inline JSX handlers and object props, but not attribute values", () => {
+    const candidates = scanSource(
+      `const el = <div
+        onClick={() => showToast("Copied to clipboard")}
+        onContextMenu={() => openMenu([{ label: "Rename item" }])}
+        options={[{ label: "Sort by name" }]}
+        placeholder="Skipped here"
+        title={"Also skipped"}
+      />;`,
+      { file: "src/Menu.tsx", config: defaultConfig },
+    );
+    expect(candidates.filter((c) => c.type === "string-literal").map((c) => c.text)).toEqual([
+      "Copied to clipboard",
+      "Rename item",
+      "Sort by name",
+    ]);
+    // attribute values still go through the JSXAttribute allowlist path only
+    expect(candidates.filter((c) => c.type === "jsx-attribute").map((c) => c.text)).toEqual(["Skipped here"]);
+  });
+
+  it("ignores CSS values and SVG path data", () => {
+    const candidates = scanSource(
+      "const s = `1px solid ${theme.border}`; const sh = `0 2px 8px rgba(0,0,0,0.2)`; const p = <path d=\"M4 4h16v16H4z\" />; const d = \"M4 4h16v16H4z\"; const ok = `Renaming ${name} now`;",
+      { file: "src/Card.tsx", config: { ...defaultConfig, scan: { ...defaultConfig.scan, attributeAllowlist: false } } },
+    );
+    expect(candidates.map((c) => c.text)).toEqual(["Renaming {{name}} now"]);
+  });
+
+  it("respects tunga-ignore-next-line directives", () => {
+    const candidates = scanSource(
+      `// tunga-ignore-next-line
+const skipped = "Internal label";
+const kept = "Visible label";
+const el = <div>{/* tunga-ignore-next-line */}
+<span>Ignored text</span></div>;`,
+      { file: "src/App.tsx", config: defaultConfig },
+    );
+    expect(candidates.map((c) => c.text)).toEqual(["Visible label"]);
+  });
+
+  it("applies config denylists for patterns, object keys, and callees", () => {
+    const config = {
+      ...defaultConfig,
+      deny: { patterns: ["\\.zip$"], objectKeys: ["sub"], callees: ["classNames", "analytics.track", "Set"] },
+    };
+    const candidates = scanSource(
+      `const a = "Download {{name}}.zip".replace("x", "y");
+const b = { sub: "Recent files", label: "Recent files list" };
+classNames("Very long string that would score medium");
+analytics.track("Clicked rename button");
+const s = new Set(["Should not appear"]);
+const kept = "Kept string";`,
+      { file: "src/App.tsx", config },
+    );
+    expect(candidates.map((c) => c.text)).toEqual(["Recent files list", "Kept string"]);
+  });
+
+  it("downgrades strings that are also compared or collected as values", () => {
+    const candidates = scanSource(
+      `const label = "Renamed";
+const other = "Moved here";
+if (action === "Renamed") doThing();
+const UNDOABLE = new Set(["Moved here"]);
+switch (kind) { case "Copied": break; }
+const copied = "Copied";`,
+      { file: "src/history.ts", config: defaultConfig },
+    );
+    const byText = Object.fromEntries(candidates.map((c) => [c.text, c.confidence]));
+    expect(byText["Renamed"]).toBe("low");
+    expect(byText["Moved here"]).toBe("low");
+    expect(byText["Copied"]).toBe("low");
+  });
+
   it("combines mixed JSX text with simple expressions and skips nested elements", () => {
     const candidates = scanSource(`const el=<><p>Hello {user.name}, you have {count} messages</p><p>Hello <strong>friend</strong></p></>;`, {
       file: "src/Profile.tsx",

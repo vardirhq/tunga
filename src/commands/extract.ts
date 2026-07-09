@@ -1,5 +1,6 @@
 import path from "node:path";
 import { loadConfig } from "../core/config.js";
+import { loadManifest, selectCandidates } from "../core/manifest.js";
 import { scanProject } from "../core/scanner.js";
 import { addCandidates, loadLocale, writeLocale } from "../core/localeFile.js";
 import { createSpinner, endTui, renderDryRunList, showNote, startTui, success } from "../output/tui.js";
@@ -10,6 +11,7 @@ export async function extractCommand(opts: {
   overwrite?: boolean;
   namespace?: string;
   keyStrategy?: "path" | "text" | "component";
+  includeLowConfidence?: boolean;
 }) {
   startTui(opts.dryRun ? "Tunga extract preview" : "Tunga extract");
 
@@ -21,7 +23,9 @@ export async function extractCommand(opts: {
   };
   const localePath = path.resolve(opts.out ?? config.locale);
   const scanSpinner = createSpinner("Finding localizable strings");
-  const candidates = await scanProject(config);
+  const scanned = await scanProject(config);
+  // Same selection as apply, so extract never writes keys apply will not use.
+  const candidates = selectCandidates(scanned, loadManifest(path.resolve(config.manifest)), opts.includeLowConfidence);
   scanSpinner.stop(`Found ${candidates.length} candidate string${candidates.length === 1 ? "" : "s"}`);
 
   const locale = loadLocale(localePath);

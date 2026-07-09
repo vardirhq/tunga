@@ -5,6 +5,7 @@ import * as t from "@babel/types";
 import type { CandidateString, TungaConfig } from "../types/index.js";
 import { ensureImport } from "./imports.js";
 import { interpolationObject, simpleExpression, uniquePlaceholder } from "./interpolation.js";
+import { isExistingLocalization, isJsxAttributeValue } from "./scanner.js";
 
 const traverse = (traverseModule as any).default ?? traverseModule;
 const generate = (generateModule as any).default ?? generateModule;
@@ -63,7 +64,15 @@ export function applyCodemod(opts: {
     JSXText(nodePath: any) {
       const candidate = match(nodePath.node, nodePath.node.value, "jsx-text");
       if (!candidate) return;
-      nodePath.replaceWith(t.jsxExpressionContainer(call(candidate)));
+      const replacement = [t.jsxExpressionContainer(call(candidate))];
+      const siblings: t.Node[] = nodePath.parent.children ?? [];
+      const index = siblings.indexOf(nodePath.node);
+      // The candidate text was trimmed at scan time; keep edge whitespace that
+      // separated the text from an adjacent sibling (JSX drops newline edges itself).
+      if (index > 0 && significantEdgeSpace(nodePath.node.value, "start")) replacement.unshift(jsxSpace());
+      if (index !== -1 && index < siblings.length - 1 && significantEdgeSpace(nodePath.node.value, "end")) replacement.push(jsxSpace());
+      if (replacement.length === 1) nodePath.replaceWith(replacement[0]);
+      else nodePath.replaceWithMultiple(replacement);
       changed = true;
     },
     JSXAttribute(nodePath: any) {
@@ -74,8 +83,8 @@ export function applyCodemod(opts: {
       changed = true;
     },
     StringLiteral(nodePath: any) {
-      if (nodePath.parentPath.isImportDeclaration() || nodePath.parentPath.isCallExpression()) return;
-      if (nodePath.findParent((parent: any) => parent.isJSXAttribute())) return;
+      if (nodePath.parentPath.isImportDeclaration() || isExistingLocalization(nodePath, opts.config)) return;
+      if (isJsxAttributeValue(nodePath)) return;
 
       const candidate = match(nodePath.node, nodePath.node.value, "string-literal");
       if (!candidate) return;
@@ -94,6 +103,15 @@ export function applyCodemod(opts: {
 
   if (changed && !opts.skipImport) ensureImport(ast.program, opts.config);
   return { code: generate(ast, { jsescOption: { minimal: true } }).code, changed };
+}
+
+function jsxSpace() {
+  return t.jsxExpressionContainer(t.stringLiteral(" "));
+}
+
+function significantEdgeSpace(value: string, edge: "start" | "end") {
+  const match = edge === "start" ? value.match(/^\s+/) : value.match(/\s+$/);
+  return match !== null && !match[0].includes("\n");
 }
 
 function hasLocation(candidate: ReplacementCandidate) {
