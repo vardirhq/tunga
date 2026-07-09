@@ -30,17 +30,44 @@ export async function scanProject(input: Partial<TungaConfig> & { cwd?: string; 
   const config = mergeConfig(input);
   const cwd = input.cwd ?? process.cwd();
   const files = await findSourceFiles(config, cwd, input.paths);
-  return (await Promise.all(files.map((file) => scanFile(file, config, cwd)))).flat();
+  const results = await Promise.all(files.map((file) => scanFileMeta(file, config, cwd)));
+  const semanticValues = new Set(results.flatMap((result) => [...result.semanticValues]));
+  return downgradeSemanticValues(results.flatMap((result) => result.candidates), semanticValues);
 }
 
 export function scanFile(file: string, config: TungaConfig, cwd = process.cwd()): CandidateString[] {
-  const source = readFileSync(file, "utf8");
-  return scanSource(source, { file: path.relative(cwd, file), config });
+  const result = scanFileMeta(file, config, cwd);
+  return downgradeSemanticValues(result.candidates, result.semanticValues);
 }
 
-export function scanSource(source: string, { file, config }: { file: string; config: TungaConfig }) {
+function scanFileMeta(file: string, config: TungaConfig, cwd = process.cwd()) {
+  const source = readFileSync(file, "utf8");
+  return scanSourceMeta(source, { file: path.relative(cwd, file), config });
+}
+
+export function scanSource(source: string, opts: { file: string; config: TungaConfig }) {
+  const result = scanSourceMeta(source, opts);
+  return downgradeSemanticValues(result.candidates, result.semanticValues);
+}
+
+// A string that is also compared with ===/!== or collected in a Set/Map is
+// probably a persisted or branched-on value; translating it breaks logic once
+// a second language exists, so any candidate with the same text is downgraded.
+export function downgradeSemanticValues(candidates: CandidateString[], semanticValues: Set<string>) {
+  for (const candidate of candidates) {
+    if (semanticValues.has(candidate.text) && candidate.confidence !== "low") {
+      candidate.confidence = "low";
+      candidate.reason = "also used as a compared or collected value";
+    }
+  }
+  return candidates;
+}
+
+export function scanSourceMeta(source: string, { file, config }: { file: string; config: TungaConfig }) {
   const ast = parse(source, { sourceType: "module", plugins: ["jsx", "typescript"] });
   const candidates: CandidateString[] = [];
+  const semanticValues = new Set<string>();
+  const ignoredLines = collectIgnoredLines(ast.comments ?? []);
 
   const mixedJsxText = new WeakSet<t.JSXText>();
 
@@ -50,6 +77,7 @@ export function scanSource(source: string, { file, config }: { file: string; con
     if (reason) return;
 
     const loc = node.loc?.start ?? { line: 1, column: 0 };
+    if (ignoredLines.has(loc.line)) return;
     const componentName = findComponentName(nodePath);
 
     candidates.push({
@@ -111,21 +139,70 @@ export function scanSource(source: string, { file, config }: { file: string; con
       if (!config.scan.stringLiterals || isExistingLocalization(nodePath, config)) return;
       if (nodePath.parentPath.isImportDeclaration() || nodePath.parentPath.isExportNamedDeclaration()) return;
       if (isJsxAttributeValue(nodePath)) return;
+      if (hasDeniedCallee(nodePath, config)) return;
       const prop = nodePath.parentPath.isObjectProperty() ? nodePath.parentPath.node : undefined;
       const key = prop ? objectPropertyKeyName(prop) : undefined;
-      if (key && isTechnicalObjectPropertyKey(key)) return;
+      if (key && (isTechnicalObjectPropertyKey(key) || config.deny.objectKeys.includes(key))) return;
       addCandidate(nodePath.node, nodePath.node.value, "string-literal", key ? `Object property ${key}` : "String literal", nodePath, { strongUi: key ? isUiObjectPropertyKey(key) : false });
     },
     TemplateLiteral(nodePath: NodePath<t.TemplateLiteral>) {
       if (!config.scan.templateLiterals) return;
       if (isExistingLocalization(nodePath, config)) return;
+      if (hasDeniedCallee(nodePath, config)) return;
       const template = templateCandidate(nodePath.node);
       if (!template) return;
       addCandidate(nodePath.node, template.text, "template-literal", "Template literal", nodePath, { interpolations: template.interpolations, strongUi: Boolean(template.interpolations.length) });
     },
+    BinaryExpression(nodePath: NodePath<t.BinaryExpression>) {
+      if (!["===", "!==", "==", "!="].includes(nodePath.node.operator)) return;
+      for (const side of [nodePath.node.left, nodePath.node.right]) {
+        if (t.isStringLiteral(side)) semanticValues.add(side.value);
+      }
+    },
+    NewExpression(nodePath: NodePath<t.NewExpression>) {
+      const callee = nodePath.node.callee;
+      if (!t.isIdentifier(callee) || (callee.name !== "Set" && callee.name !== "Map")) return;
+      for (const argument of nodePath.node.arguments) {
+        t.traverseFast(argument as t.Node, (node) => {
+          if (t.isStringLiteral(node)) semanticValues.add(node.value);
+        });
+      }
+    },
+    SwitchCase(nodePath: NodePath<t.SwitchCase>) {
+      if (t.isStringLiteral(nodePath.node.test)) semanticValues.add(nodePath.node.test.value);
+    },
   });
 
-  return candidates;
+  return { candidates, semanticValues };
+}
+
+function collectIgnoredLines(comments: readonly t.Comment[]) {
+  const lines = new Set<number>();
+  for (const comment of comments) {
+    if (comment.value.includes("tunga-ignore-next-line") && comment.loc) lines.add(comment.loc.end.line + 1);
+  }
+  return lines;
+}
+
+function calleeName(node: t.CallExpression | t.NewExpression): string | undefined {
+  const callee = node.callee;
+  if (t.isIdentifier(callee)) return callee.name;
+  if (t.isMemberExpression(callee) && t.isIdentifier(callee.property)) {
+    const object = t.isIdentifier(callee.object) ? callee.object.name : undefined;
+    return object ? `${object}.${callee.property.name}` : callee.property.name;
+  }
+  return undefined;
+}
+
+function hasDeniedCallee(nodePath: NodePath, config: TungaConfig) {
+  if (config.deny.callees.length === 0) return false;
+  return Boolean(
+    nodePath.findParent((parent) => {
+      if (!parent.isCallExpression() && !parent.isNewExpression()) return false;
+      const name = calleeName(parent.node as t.CallExpression | t.NewExpression);
+      return name !== undefined && config.deny.callees.includes(name);
+    }),
+  );
 }
 
 // Only strings in direct attribute value position (`attr="..."` or `attr={"..."}`)

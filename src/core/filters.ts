@@ -7,6 +7,7 @@ export function shouldIgnoreString(raw: string, config: TungaConfig, context?: {
   const value = raw.trim();
 
   if (value.length < config.filters.minLength) return "too short";
+  if (config.deny.patterns.some((pattern) => new RegExp(pattern).test(value))) return "denied by config pattern";
   if (config.filters.ignorePunctuationOnly && /^[\p{P}\p{S}\s]+$/u.test(value)) return "punctuation only";
   if (config.filters.ignoreNumbers && /^[\d\s.,:-]+$/.test(value)) return "numeric";
   if (/^https?:\/\//.test(value) || /^mailto:/.test(value)) return "url";

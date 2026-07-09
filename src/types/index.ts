@@ -22,6 +22,7 @@ export type TungaConfig = {
   include: string[];
   ignore: string[];
   locale: string;
+  manifest: string;
   functionName: string;
   importSource: string;
   importKind: ImportKind;
@@ -33,6 +34,11 @@ export type TungaConfig = {
     stringLiterals: boolean;
     templateLiterals: boolean;
     attributeAllowlist: string[] | false;
+  };
+  deny: {
+    patterns: string[];
+    objectKeys: string[];
+    callees: string[];
   };
   filters: {
     minLength: number;

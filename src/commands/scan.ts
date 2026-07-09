@@ -1,4 +1,6 @@
+import path from "node:path";
 import { loadConfig } from "../core/config.js";
+import { loadManifest, saveManifest } from "../core/manifest.js";
 import { scanProject } from "../core/scanner.js";
 import { reviewCandidates } from "../interactive/review.js";
 import { printJson } from "../output/json.js";
@@ -23,8 +25,12 @@ export async function scanCommand(target: string | undefined, opts: { json?: boo
 
   if (opts.interactive) {
     startTui("Tunga review");
-    const reviewed = await reviewCandidates(candidates);
+    const manifestPath = path.resolve(config.manifest);
+    const manifest = loadManifest(manifestPath);
+    const reviewed = await reviewCandidates(candidates, manifest);
+    saveManifest(manifestPath, manifest);
     showNote(formatScan(reviewed), "Accepted candidates");
+    success(`Decisions saved to ${config.manifest} — extract and apply will use them.`);
     endTui(`${reviewed.length} accepted, ${candidates.length - reviewed.length} skipped`);
     return;
   }

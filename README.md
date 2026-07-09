@@ -206,6 +206,21 @@ src/components/Header.tsx:15  JSX attribute  "Search products"
 src/pages/Settings.tsx:8      JSX text       "Account settings"
 ```
 
+To review candidates one by one, run:
+
+```bash
+tunga scan --interactive
+```
+
+Accept, edit the key, or reject each candidate. Decisions are persisted to a review
+manifest (`.tunga/review.json` by default, configurable via `manifest`), keyed by the
+candidate's content rather than its position so they survive unrelated edits.
+`extract`, `apply`, and `check` all consume the manifest: rejected strings are never
+extracted or rewritten, and accepted strings are included even at low confidence,
+using the key you chose. Re-running `scan --interactive` only prompts for candidates
+you have not decided yet, so a large review can be done in several sittings. Commit
+the manifest alongside your code.
+
 ### 2. Extract locale keys
 
 ```bash
@@ -390,6 +405,7 @@ export default {
   include: ["src/**/*.{ts,tsx}"],
   ignore: ["node_modules/**", "dist/**"],
   locale: "locales/en.json",
+  manifest: ".tunga/review.json",
   functionName: "t",
   importSource: "@/i18n",
   importKind: "named",
@@ -397,6 +413,11 @@ export default {
   namespace: "ui",
   scan: {
     attributeAllowlist: ["title", "placeholder", "alt", "aria-label", "label"],
+  },
+  deny: {
+    patterns: ["\\.zip$", "^--"],
+    objectKeys: ["sub", "kind", "value"],
+    callees: ["classNames", "analytics.track", "Set"],
   },
   filters: {
     ignoreCodeLike: true,
@@ -427,6 +448,17 @@ Tunga tries to avoid strings that are usually not user-facing copy, including:
 - MIME types
 - environment variables
 - existing localization keys
+- strings that also appear in a `===`/`!==` comparison, a `switch` case, or a
+  `new Set(...)`/`new Map(...)` literal anywhere in the project — these are usually
+  persisted or branched-on values, so they are downgraded to low confidence
+
+Beyond the built-in heuristics you can deny candidates explicitly:
+
+- `deny.patterns` — regexes tested against the candidate text
+- `deny.objectKeys` — object property keys whose string values are never candidates
+- `deny.callees` — call or constructor names whose arguments are never candidates
+  (e.g. `classNames`, `analytics.track`, `Set`)
+- `// tunga-ignore-next-line` — suppresses all candidates on the following line
 
 No scanner is perfect. Tunga is designed to make candidates visible so you can review them before applying changes.
 
@@ -462,6 +494,8 @@ useTranslations("Settings");
 - Babel-powered codemods
 - dry-run previews
 - configurable key strategies
+- interactive review with a persisted review manifest
+- config denylists and inline ignore directives
 
 ### Future improvements
 
@@ -472,7 +506,7 @@ useTranslations("Settings");
 - `next-intl` presets
 - `react-i18next` presets
 - FormatJS presets
-- interactive review mode
+- format-preserving codemods (recast-style) for smaller diffs
 - HTML reports
 - Markdown reports
 

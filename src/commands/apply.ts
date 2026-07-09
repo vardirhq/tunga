@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { loadConfig } from "../core/config.js";
+import { loadManifest, selectCandidates } from "../core/manifest.js";
 import { scanProject } from "../core/scanner.js";
 import { addCandidates, loadLocale } from "../core/localeFile.js";
 import { applyCodemod } from "../core/codemod.js";
@@ -27,7 +28,7 @@ export async function applyCommand(opts: {
 
   const scanSpinner = createSpinner("Finding replacement candidates");
   const scanned = await scanProject(config);
-  const candidates = scanned.filter((candidate) => candidate.confidence !== "low" || opts.includeLowConfidence);
+  const candidates = selectCandidates(scanned, loadManifest(path.resolve(config.manifest)), opts.includeLowConfidence);
   scanSpinner.stop(`Found ${candidates.length} candidate string${candidates.length === 1 ? "" : "s"}`);
 
   // Resolve keys against the locale file so apply uses the same collision-suffixed

@@ -85,6 +85,51 @@ const title="Dashboard"; const route="/settings"; const label=\`Settings\`; t("u
     expect(candidates.map((c) => c.text)).toEqual(["Renaming {{name}} now"]);
   });
 
+  it("respects tunga-ignore-next-line directives", () => {
+    const candidates = scanSource(
+      `// tunga-ignore-next-line
+const skipped = "Internal label";
+const kept = "Visible label";
+const el = <div>{/* tunga-ignore-next-line */}
+<span>Ignored text</span></div>;`,
+      { file: "src/App.tsx", config: defaultConfig },
+    );
+    expect(candidates.map((c) => c.text)).toEqual(["Visible label"]);
+  });
+
+  it("applies config denylists for patterns, object keys, and callees", () => {
+    const config = {
+      ...defaultConfig,
+      deny: { patterns: ["\\.zip$"], objectKeys: ["sub"], callees: ["classNames", "analytics.track", "Set"] },
+    };
+    const candidates = scanSource(
+      `const a = "Download {{name}}.zip".replace("x", "y");
+const b = { sub: "Recent files", label: "Recent files list" };
+classNames("Very long string that would score medium");
+analytics.track("Clicked rename button");
+const s = new Set(["Should not appear"]);
+const kept = "Kept string";`,
+      { file: "src/App.tsx", config },
+    );
+    expect(candidates.map((c) => c.text)).toEqual(["Recent files list", "Kept string"]);
+  });
+
+  it("downgrades strings that are also compared or collected as values", () => {
+    const candidates = scanSource(
+      `const label = "Renamed";
+const other = "Moved here";
+if (action === "Renamed") doThing();
+const UNDOABLE = new Set(["Moved here"]);
+switch (kind) { case "Copied": break; }
+const copied = "Copied";`,
+      { file: "src/history.ts", config: defaultConfig },
+    );
+    const byText = Object.fromEntries(candidates.map((c) => [c.text, c.confidence]));
+    expect(byText["Renamed"]).toBe("low");
+    expect(byText["Moved here"]).toBe("low");
+    expect(byText["Copied"]).toBe("low");
+  });
+
   it("combines mixed JSX text with simple expressions and skips nested elements", () => {
     const candidates = scanSource(`const el=<><p>Hello {user.name}, you have {count} messages</p><p>Hello <strong>friend</strong></p></>;`, {
       file: "src/Profile.tsx",

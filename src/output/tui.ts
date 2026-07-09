@@ -3,6 +3,7 @@ import type { CandidateString } from "../types/index.js";
 
 export type CandidateDecision =
   | { action: "accept"; key: string }
+  | { action: "reject" }
   | { action: "skip" };
 
 export function startTui(title: string) {
@@ -74,7 +75,8 @@ export async function reviewCandidate(candidate: CandidateString): Promise<Candi
     options: [
       { value: "accept", label: "Accept", hint: "Use the suggested key" },
       { value: "edit", label: "Edit key", hint: "Accept with a custom key" },
-      { value: "skip", label: "Skip", hint: "Do not localize this string" },
+      { value: "reject", label: "Reject", hint: "Never localize this string (remembered)" },
+      { value: "skip", label: "Skip", hint: "Decide later" },
     ],
   });
 
@@ -83,8 +85,8 @@ export async function reviewCandidate(candidate: CandidateString): Promise<Candi
     return { action: "skip" };
   }
 
-  if (action === "skip") {
-    return { action: "skip" };
+  if (action === "skip" || action === "reject") {
+    return { action };
   }
 
   if (action === "edit") {
