@@ -6,6 +6,7 @@ import { extractCommand } from "./commands/extract.js";
 import { initCommand } from "./commands/init.js";
 import { reportCommand } from "./commands/report.js";
 import { scanCommand } from "./commands/scan.js";
+import { verifyCommand } from "./commands/verify.js";
 import { failure } from "./output/tui.js";
 
 const program = new Command();
@@ -44,6 +45,14 @@ program
   .action(applyCommand);
 
 program.command("check").description("Fail if hardcoded candidate strings are found").action(checkCommand);
+
+program
+  .command("verify")
+  .description("Fail if any translation call does not resolve against the locale file")
+  .option("--json", "Print machine-readable JSON")
+  .option("--strict", "Also fail on warnings (e.g. orphaned locale keys)")
+  .option("--locale <file>", "Locale file used for key lookup")
+  .action(verifyCommand);
 
 program.command("report").option("--json", "Print machine-readable JSON").action(reportCommand);
 

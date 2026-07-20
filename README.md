@@ -281,6 +281,59 @@ Then rewrite source files:
 tunga apply
 ```
 
+### 4. Verify the result
+
+```bash
+tunga verify
+```
+
+`apply` rewrites source and `extract` writes the locale file, but nothing proves
+the two agree afterwards. `verify` closes that loop: it scans the codebase for
+every call to your translation function and asserts the **code ↔ locale
+contract** holds.
+
+```text
+Verified 128 translation calls across 37 files
+
+Errors
+  src/Details.tsx:42  [missing-key] t("ui.details.folders") has no matching key in the locale file
+  src/Toast.tsx:9     [placeholder-mismatch] "ui.toast.renamed" expects {{name}} but t("ui.toast.renamed") passes no interpolation values
+```
+
+It reports four things:
+
+- **missing-key** — a `t("key")` call whose key is absent from the locale file,
+  or points at a group of keys instead of a translation string.
+- **empty-value** — a key that resolves to an empty string.
+- **placeholder-mismatch** — a locale value that expects `{{name}}` the call
+  never passes, so it would render literally at runtime.
+- **orphaned-key** (warning) — a locale key nothing references.
+
+`verify` exits non-zero when any error is found, so it drops straight into CI
+next to `tunga check`. Warnings (orphaned keys) do not fail the build unless you
+pass `--strict`. Calls with a dynamic key (`t(variable)`) cannot be checked
+statically and are reported as unverifiable rather than counted as errors. Use
+`--json` for a machine-readable report:
+
+```bash
+tunga verify --json
+```
+
+```json
+{
+  "ok": false,
+  "checked": { "files": 37, "references": 128, "keys": 604 },
+  "summary": { "error": 2, "warning": 5, "dynamicKeys": 1, "unreadable": 0 },
+  "issues": [
+    { "type": "missing-key", "severity": "error", "key": "ui.details.folders", "file": "src/Details.tsx", "line": 42, "message": "..." }
+  ]
+}
+```
+
+This is the check that lets an automated agent apply Tunga and trust the result
+without re-reading the entire diff: if `verify` is green, every rendered string
+resolves.
+
 ---
 
 ## Architecture
@@ -311,6 +364,7 @@ The core workflow is exposed as CLI commands:
 | `tunga extract` | Generate locale keys and update locale JSON. |
 | `tunga apply` | Rewrite source code with i18n function calls. |
 | `tunga check` | Detect remaining hardcoded strings. |
+| `tunga verify` | Confirm every translation call resolves against the locale file. |
 | `tunga report` | Summarize localization health. |
 | `tunga init` | Create a starter configuration. |
 
@@ -503,6 +557,7 @@ useTranslations("Settings");
 - configurable key strategies
 - interactive review with a persisted review manifest
 - config denylists and inline ignore directives
+- post-migration verification of the code ↔ locale contract (`tunga verify`)
 
 ### Future improvements
 
