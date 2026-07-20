@@ -18,7 +18,10 @@ reviewable behavior.
 
 Read `README.md` for the full user-facing product description and
 `FEEDBACK.md` for a real-world field report (the Geyma migration) that documents
-known sharp edges and the reasoning behind several heuristics.
+known sharp edges and the reasoning behind several heuristics. `DIRECTION.md` is
+the forward-looking design plan — the prioritized roadmap for making Tunga the
+default i18n-migration tool, with each item's status and rationale. Consult it
+before starting significant new work, and update it as items ship.
 
 ## Tech stack
 
@@ -55,7 +58,7 @@ There is no lint step and no CI config in the repo. **Before committing, run bot
 
 The built CLI is exposed as the `tunga` binary (`bin` → `dist/cli.js`). The user
 workflow is `tunga scan` → `tunga extract` → `tunga apply`, plus `tunga check`
-(CI gate) and `tunga report`.
+and `tunga verify` (CI gates) and `tunga report`.
 
 ## Architecture
 
@@ -70,7 +73,7 @@ cli.ts (commander wiring)
 ```
 
 ### `src/cli.ts`
-Thin entry point. Defines the six subcommands and their flags with `commander`,
+Thin entry point. Defines the seven subcommands and their flags with `commander`,
 then delegates to a handler in `src/commands/`. Keep it thin — logic lives in
 commands and core.
 
@@ -81,7 +84,12 @@ commands and core.
 - `extract.ts` — scans, selects candidates via the manifest, writes locale keys.
 - `apply.ts` — scans, selects candidates, rewrites source files with codemods.
 - `check.ts` — scans; exits non-zero if any candidate remains (CI gate).
-- `report.ts` — summary counts (several metrics are still stubbed at `0`).
+- `verify.ts` — scans the *rewritten* source for translation calls and asserts
+  each resolves against the locale file (missing/empty keys, placeholder
+  mismatches, orphaned keys). CI gate; `--json` for machine output.
+- `report.ts` — localization health snapshot (coverage %, localized vs.
+  hardcoded counts, missing/unused locale keys). Metrics come from
+  `buildReport` in `core/verify.ts`; `--json` for machine output.
 
 Commands are the only place that touches the filesystem for user files, loads
 config, and drives the TUI. Core modules stay pure/testable.
@@ -110,6 +118,13 @@ config, and drives the TUI. Core modules stay pure/testable.
   by a **content hash** (`file` + `text` + `context`), not position, so they
   survive edits. `selectCandidates` is the shared accept/reject/confidence rule
   used by extract, apply, and check.
+- `verify.ts` — `collectReferences` reads static `t("key", { params })` calls
+  from source; `collectProjectReferences` walks the file set once (shared by the
+  verify and report commands); `verifyReference` checks one call against the
+  locale (missing key, empty value, unpassed placeholder);
+  `findOrphanedKeys`/`flattenLocaleKeys` handle unreferenced locale leaves;
+  `buildReport` turns a project scan into the health snapshot `report` prints.
+  Pure and framework-agnostic (uses `functionName`), like the rest of core.
 - `imports.ts` — `ensureImport` inserts/merges the `t` import.
 - `interpolation.ts` — extracts simple `${ident}` / `${a.b}` interpolations into
   `{{name}}` placeholders and rebuilds the argument object.
