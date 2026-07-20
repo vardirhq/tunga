@@ -18,7 +18,10 @@ reviewable behavior.
 
 Read `README.md` for the full user-facing product description and
 `FEEDBACK.md` for a real-world field report (the Geyma migration) that documents
-known sharp edges and the reasoning behind several heuristics.
+known sharp edges and the reasoning behind several heuristics. `DIRECTION.md` is
+the forward-looking design plan — the prioritized roadmap for making Tunga the
+default i18n-migration tool, with each item's status and rationale. Consult it
+before starting significant new work, and update it as items ship.
 
 ## Tech stack
 
