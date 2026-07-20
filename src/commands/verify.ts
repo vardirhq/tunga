@@ -1,9 +1,8 @@
-import { readFileSync } from "node:fs";
 import path from "node:path";
 import { loadConfig } from "../core/config.js";
 import { loadLocale } from "../core/localeFile.js";
 import { findSourceFiles } from "../core/scanner.js";
-import { collectReferences, findOrphanedKeys, flattenLocaleKeys, verifyReference, type VerifyIssue } from "../core/verify.js";
+import { collectProjectReferences, findOrphanedKeys, flattenLocaleKeys, verifyReference, type VerifyIssue } from "../core/verify.js";
 import { printJson } from "../output/json.js";
 import { createSpinner, failure, info, showNote, success, warning } from "../output/tui.js";
 
@@ -16,31 +15,13 @@ export async function verifyCommand(opts: { json?: boolean; strict?: boolean; lo
 
   const files = await findSourceFiles(config, cwd);
   const locale = loadLocale(path.resolve(config.locale));
+  const project = collectProjectReferences(files, cwd, config);
+  const { references, referencedKeys, dynamicKeys, unreadable } = project;
+  const referenceCount = references.length;
 
   const issues: VerifyIssue[] = [];
-  const referencedKeys = new Set<string>();
-  const unreadable: string[] = [];
-  let referenceCount = 0;
-  let dynamicKeys = 0;
-
-  for (const absoluteFile of files) {
-    const file = path.relative(cwd, absoluteFile);
-    let collected;
-    try {
-      collected = collectReferences({ source: readFileSync(absoluteFile, "utf8"), file, config });
-    } catch {
-      // A file Tunga cannot parse is a gap in verification, not a resolvable
-      // call — surface it separately instead of crashing the whole run.
-      unreadable.push(file);
-      continue;
-    }
-
-    dynamicKeys += collected.dynamicKeys;
-    for (const reference of collected.references) {
-      referenceCount++;
-      referencedKeys.add(reference.key);
-      issues.push(...verifyReference(reference, locale, config.functionName));
-    }
+  for (const reference of references) {
+    issues.push(...verifyReference(reference, locale, config.functionName));
   }
 
   issues.push(...findOrphanedKeys(locale, referencedKeys, config.functionName));

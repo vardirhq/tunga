@@ -84,7 +84,9 @@ commands and core.
 - `verify.ts` — scans the *rewritten* source for translation calls and asserts
   each resolves against the locale file (missing/empty keys, placeholder
   mismatches, orphaned keys). CI gate; `--json` for machine output.
-- `report.ts` — summary counts (several metrics are still stubbed at `0`).
+- `report.ts` — localization health snapshot (coverage %, localized vs.
+  hardcoded counts, missing/unused locale keys). Metrics come from
+  `buildReport` in `core/verify.ts`; `--json` for machine output.
 
 Commands are the only place that touches the filesystem for user files, loads
 config, and drives the TUI. Core modules stay pure/testable.
@@ -114,10 +116,12 @@ config, and drives the TUI. Core modules stay pure/testable.
   survive edits. `selectCandidates` is the shared accept/reject/confidence rule
   used by extract, apply, and check.
 - `verify.ts` — `collectReferences` reads static `t("key", { params })` calls
-  from source; `verifyReference` checks one call against the locale (missing key,
-  empty value, unpassed placeholder); `findOrphanedKeys`/`flattenLocaleKeys`
-  handle unreferenced locale leaves. Pure and framework-agnostic (uses
-  `functionName`), like the rest of core.
+  from source; `collectProjectReferences` walks the file set once (shared by the
+  verify and report commands); `verifyReference` checks one call against the
+  locale (missing key, empty value, unpassed placeholder);
+  `findOrphanedKeys`/`flattenLocaleKeys` handle unreferenced locale leaves;
+  `buildReport` turns a project scan into the health snapshot `report` prints.
+  Pure and framework-agnostic (uses `functionName`), like the rest of core.
 - `imports.ts` — `ensureImport` inserts/merges the `t` import.
 - `interpolation.ts` — extracts simple `${ident}` / `${a.b}` interpolations into
   `{{name}}` placeholders and rebuilds the argument object.

@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { parse } from "@babel/parser";
 import traverseModule from "@babel/traverse";
 import * as t from "@babel/types";
@@ -85,6 +87,42 @@ export function collectReferences(opts: { source: string; file?: string; config:
   return { references, dynamicKeys };
 }
 
+export type ProjectReferences = {
+  references: TranslationReference[];
+  referencedKeys: Set<string>;
+  dynamicKeys: number;
+  unreadable: string[];
+};
+
+// Walk the resolved source files once and gather every static translation call
+// across the project. Reads files here (like `scanFileMeta` in the scanner) so
+// the two commands that need this — verify and report — share one code path and
+// one parse-error policy: an unreadable/unparseable file is recorded, not fatal.
+export function collectProjectReferences(files: string[], cwd: string, config: TungaConfig): ProjectReferences {
+  const references: TranslationReference[] = [];
+  const referencedKeys = new Set<string>();
+  const unreadable: string[] = [];
+  let dynamicKeys = 0;
+
+  for (const absoluteFile of files) {
+    const file = path.relative(cwd, absoluteFile);
+    let collected;
+    try {
+      collected = collectReferences({ source: readFileSync(absoluteFile, "utf8"), file, config });
+    } catch {
+      unreadable.push(file);
+      continue;
+    }
+    dynamicKeys += collected.dynamicKeys;
+    for (const reference of collected.references) {
+      references.push(reference);
+      referencedKeys.add(reference.key);
+    }
+  }
+
+  return { references, referencedKeys, dynamicKeys, unreadable };
+}
+
 // The translation-function name, whether called bare (`t`) or as a member
 // (`i18n.t`). Anything else is not a translation call we can verify.
 function calleeName(callee: t.Node): string | undefined {
@@ -168,4 +206,48 @@ export function findOrphanedKeys(locale: unknown, referenced: Set<string>, funct
 
 function formatPlaceholders(names: string[]): string {
   return names.map((name) => `{{${name}}}`).join(", ");
+}
+
+export type LocalizationReport = {
+  filesScanned: number;
+  localeFile: string;
+  localizedStrings: number;
+  hardcodedCandidates: number;
+  coverage: number;
+  localeKeys: number;
+  missingLocaleKeys: number;
+  unusedLocaleKeys: number;
+  dynamicKeys: number;
+  unreadableFiles: number;
+};
+
+// Turn the raw project scan into an honest health snapshot. `coverage` is the
+// share of user-facing strings already localized — localized calls over
+// localized calls plus the hardcoded strings still awaiting migration — and is
+// 1 when there is nothing left to localize.
+export function buildReport(input: {
+  filesScanned: number;
+  localeFile: string;
+  references: ProjectReferences;
+  hardcodedCandidates: number;
+  locale: unknown;
+}): LocalizationReport {
+  const localizedStrings = input.references.references.length;
+  const leafKeys = flattenLocaleKeys(input.locale);
+  const missingLocaleKeys = [...input.references.referencedKeys].filter((key) => typeof getNested(input.locale, key) !== "string").length;
+  const unusedLocaleKeys = leafKeys.filter((key) => !input.references.referencedKeys.has(key)).length;
+  const total = localizedStrings + input.hardcodedCandidates;
+
+  return {
+    filesScanned: input.filesScanned,
+    localeFile: input.localeFile,
+    localizedStrings,
+    hardcodedCandidates: input.hardcodedCandidates,
+    coverage: total === 0 ? 1 : Math.round((localizedStrings / total) * 10000) / 10000,
+    localeKeys: leafKeys.length,
+    missingLocaleKeys,
+    unusedLocaleKeys,
+    dynamicKeys: input.references.dynamicKeys,
+    unreadableFiles: input.references.unreadable.length,
+  };
 }

@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 import { defaultConfig } from "../src/core/config.js";
-import { collectReferences, findOrphanedKeys, flattenLocaleKeys, placeholdersIn, verifyReference } from "../src/core/verify.js";
+import { buildReport, collectReferences, findOrphanedKeys, flattenLocaleKeys, placeholdersIn, verifyReference, type ProjectReferences } from "../src/core/verify.js";
 
 const config = defaultConfig;
 
@@ -97,4 +97,34 @@ it("reports locale keys that nothing references as warnings", () => {
   const orphans = findOrphanedKeys({ ui: { used: "U", unused: "X" } }, new Set(["ui.used"]), "t");
   expect(orphans).toHaveLength(1);
   expect(orphans[0]).toMatchObject({ type: "orphaned-key", severity: "warning", key: "ui.unused" });
+});
+
+function projectReferences(over: Partial<ProjectReferences> = {}): ProjectReferences {
+  return { references: [], referencedKeys: new Set(), dynamicKeys: 0, unreadable: [], ...over };
+}
+
+it("computes coverage and locale-key metrics for a report", () => {
+  const references = projectReferences({
+    references: [{ key: "ui.a", params: [], paramsKnown: true, hasParamsArg: false }],
+    referencedKeys: new Set(["ui.a", "ui.gone"]),
+  });
+  const report = buildReport({
+    filesScanned: 3,
+    localeFile: "src/locales/en.json",
+    references,
+    hardcodedCandidates: 3,
+    locale: { ui: { a: "A", orphan: "O" } },
+  });
+
+  expect(report.localizedStrings).toBe(1);
+  expect(report.hardcodedCandidates).toBe(3);
+  expect(report.coverage).toBe(0.25); // 1 of (1 + 3)
+  expect(report.localeKeys).toBe(2);
+  expect(report.missingLocaleKeys).toBe(1); // ui.gone is referenced but absent
+  expect(report.unusedLocaleKeys).toBe(1); // ui.orphan is never referenced
+});
+
+it("reports full coverage when there is nothing left to localize", () => {
+  const report = buildReport({ filesScanned: 1, localeFile: "en.json", references: projectReferences(), hardcodedCandidates: 0, locale: {} });
+  expect(report.coverage).toBe(1);
 });

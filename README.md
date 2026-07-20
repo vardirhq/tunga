@@ -334,6 +334,46 @@ This is the check that lets an automated agent apply Tunga and trust the result
 without re-reading the entire diff: if `verify` is green, every rendered string
 resolves.
 
+### 5. Track progress
+
+```bash
+tunga report
+```
+
+```text
+Localization coverage: 87.3%
+Localized strings: 604
+Hardcoded candidates: 88
+Locale keys: 611
+Missing locale keys: 0
+Unused locale keys: 7
+```
+
+`report` is the migration's dashboard. **Coverage** is the share of user-facing
+strings already localized — localized calls over localized calls plus the
+hardcoded strings still awaiting migration — so it climbs toward 100% as you work
+through a codebase. It also surfaces missing and unused locale keys. Pass
+`--json` for a machine-readable snapshot:
+
+```bash
+tunga report --json
+```
+
+```json
+{
+  "filesScanned": 37,
+  "localeFile": "src/locales/en.json",
+  "localizedStrings": 604,
+  "hardcodedCandidates": 88,
+  "coverage": 0.873,
+  "localeKeys": 611,
+  "missingLocaleKeys": 0,
+  "unusedLocaleKeys": 7,
+  "dynamicKeys": 1,
+  "unreadableFiles": 0
+}
+```
+
 ---
 
 ## Architecture
@@ -558,6 +598,7 @@ useTranslations("Settings");
 - interactive review with a persisted review manifest
 - config denylists and inline ignore directives
 - post-migration verification of the code ↔ locale contract (`tunga verify`)
+- localization coverage reporting (`tunga report`)
 
 ### Future improvements
 
